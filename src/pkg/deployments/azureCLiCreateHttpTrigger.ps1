@@ -1,0 +1,1 @@
+func new --name TestFunctionTrigger --template "HTTP Trigger" --authlevel "anonymous"

@@ -1,0 +1,1 @@
+Remove-AzWebAppAccessRestrictionRule -ResourceGroupName "app_event_grid" -WebAppName "vendorpkgslip"  -Name "AzureDevOpsAgent$($Env:AGENT_MACHINENAME)"

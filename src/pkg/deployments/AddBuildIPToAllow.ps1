@@ -1,0 +1,2 @@
+$HostedIPAddress = Invoke-RestMethod https://ipinfo.io/json | Select -exp ip
+Add-AzWebAppAccessRestrictionRule -ResourceGroupName "app_event_grid" -WebAppName "vendorpkgslip" -Name "AzureDevOpsAgent$($Env:AGENT_MACHINENAME)" -Priority 111 -Action Allow -IpAddress "$HostedIPAddress/32"
