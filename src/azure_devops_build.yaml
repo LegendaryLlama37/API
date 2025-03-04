@@ -1,0 +1,93 @@
+trigger:
+  branches:
+    include:
+    - main
+#trigger: none
+
+variables:
+- group: kv-dev-Azure-Pipeline
+
+# build agent info
+jobs:
+- job: Build
+  displayName: Build
+  pool:
+    vmImage: 'ubuntu-latest'
+  steps:
+  - checkout: self
+
+# go version  
+  - task: GoTool@0
+    displayName: Use Go 1.23.3
+    inputs:
+      version: 1.23.3  # Ensure this matches the version you want to use
+
+# Bash command to create directory in staging directory and copy all src to staging dir
+  - script: |
+      mkdir -p $(Build.ArtifactStagingDirectory)/src
+      cp -R src/* $(Build.ArtifactStagingDirectory)/src/
+    displayName: Copy Go Source Files
+
+# go init and install dependencies
+  - script: |
+      cd $(Build.ArtifactStagingDirectory)/src
+      go mod init example.com/myapp || true
+      go mod tidy
+      go install github.com/swaggo/swag/cmd/swag@latest
+      go get -u github.com/swaggo/http-swagger
+      go get -u github.com/alecthomas/template
+      go get -u github.com/go-chi/chi/v5
+      go get -u github.com/dgrijalva/jwt-go
+      go get github.com/Azure/azure-sdk-for-go/sdk/azidentity
+      go get github.com/Azure/azure-sdk-for-go/sdk/messaging/eventgrid/azeventgrid
+      go get github.com/Azure/azure-sdk-for-go/sdk/azcore
+      go get github.com/Azure/azure-sdk-for-go/sdk/azcore/messaging
+      go get github.com/Azure/azure-sdk-for-go/sdk/messaging/azeventgrid/publisher
+    displayName: Initialize Go Module and Tidy Dependencies
+
+# Ensure Go bin directory is in the PATH to access swag command
+  - script: |
+      export PATH=$PATH:$(go env GOPATH)/bin
+      mkdir -p $(Build.ArtifactStagingDirectory)/src/swagger # Create swagger directory if not exists
+      cd $(Build.ArtifactStagingDirectory)/src
+      swag init --generalInfo ./main.go --output ./swagger
+    displayName: Generate Swagger Docs
+
+# Build app, call it my app on local directory (src)
+  - script: |
+      cd $(Build.ArtifactStagingDirectory)/src
+      GOOS=windows GOARCH=amd64 go build -o api.exe .
+      go build -o api_linux .
+    displayName: Build Go Application
+
+# # Run Go unit tests (this is the part that runs the tests)
+#   - script: |
+#       cd $(Build.ArtifactStagingDirectory)/src
+#       go test ./... -v
+# #     go test ./api/... -v <-- testing!!
+#     displayName: Run Go Tests (exluding main package)
+
+# Optional: Run Go tests with coverage
+  - script: |
+      cd $(Build.ArtifactStagingDirectory)/src
+      go test ./... -coverprofile=coverage.out
+      go tool cover -html=coverage.out -o coverage.html
+    displayName: Run Go Tests with Coverage
+    
+# copy binary and source code to artifacts for re-use or release
+  - task: CopyFiles@2
+    displayName: 'Copy Files to: $(build.artifactstagingdirectory)/src/pkg/FunctionApp'
+    inputs:
+      SourceFolder: $(build.artifactstagingdirectory)/src
+      Contents: api.exe
+      TargetFolder: $(build.artifactstagingdirectory)/src/pkg/FunctionApp
+
+  - task: ArchiveFiles@2
+    displayName: Archive $(build.artifactstagingdirectory)/src/pkg/FunctionApp/
+    inputs:
+      rootFolderOrFile: $(build.artifactstagingdirectory)/src/pkg/FunctionApp/
+      includeRootFolder: false
+
+# publish artifact
+  - task: PublishBuildArtifacts@1
+    displayName: Publish Build Artifacts
